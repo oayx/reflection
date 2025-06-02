@@ -1,6 +1,8 @@
 
 ## 用法举例
 
+```cpp
+
 //---------- 示例类 ----------
 class UActor : public UObject {
 	GENERATED_BODY(UActor, UObject)
@@ -122,4 +124,4 @@ int main() {
 
 	return 0;
 }
-
+```
