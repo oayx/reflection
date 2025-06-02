@@ -1,11 +1,9 @@
 ﻿#include "Reflection.h"
 
-
 //---------- 示例类 ----------
 class UActor : public UObject {
 	GENERATED_BODY(UActor, UObject)
 };
-
 
 class UPawn : public UActor {
 	GENERATED_BODY(UPawn, UActor)
@@ -22,8 +20,9 @@ public:
 	std::string Name = "Pawn";
 
 	// 无参数函数
-	UFUNCTION(void, TakeDamage)
-	void TakeDamage() {
+	UFUNCTION(void, TakeDamage, (), EditAnywhere, Category = Gameplay)
+	void TakeDamage()
+	{
 		std::cout << Name << " takes 10 damage!\n";
 		Health -= 10;
 		if (Health <= 0) {
@@ -32,23 +31,26 @@ public:
 	}
 
 	// 带参数函数
-	UFUNCTION(void, Heal, int amount)
-	void Heal(int amount) {
+	UFUNCTION(void, Heal, (int amount), BlueprintCallable)
+	void Heal(int amount)
+	{
 		std::cout << Name << " heals " << amount << " HP!\n";
 		Health += amount;
 		if (Health > 100) Health = 100;
 	}
 
 	// 带返回值的函数
-	UFUNCTION(bool, CanAttack, float range)
-	bool CanAttack(float range) {
+	UFUNCTION(bool, CanAttack, (float range), DisplayName = "Can Attack")
+	bool CanAttack(float range)
+	{
 		std::cout << "Checking attack range: " << range << "\n";
 		return range <= 10.0f;
 	}
 
 	// 带参数和返回值的函数
-	UFUNCTION(float, CalculateDamage, float baseDamage, float multiplier)
-	float CalculateDamage(float baseDamage, float multiplier) {
+	UFUNCTION(float, CalculateDamage, (float baseDamage, float multiplier), Category = Combat)
+	float CalculateDamage(float baseDamage, float multiplier)
+	{
 		std::cout << "Calculating damage: " << baseDamage << " * " << multiplier << "\n";
 		return baseDamage * multiplier;
 	}
@@ -83,6 +85,12 @@ void PrintFunctionInfo(const FunctionInfo& func) {
 	std::cout << "  Metadata:\n";
 	if (func.meta.HasFlag("BlueprintCallable")) {
 		std::cout << "    - Blueprint Callable\n";
+	}
+	if (auto category = func.meta.GetValue("Category"); !category.empty()) {
+		std::cout << "    - Category: " << category << "\n";
+	}
+	if (auto displayName = func.meta.GetValue("DisplayName"); !displayName.empty()) {
+		std::cout << "    - Display Name: " << displayName << "\n";
 	}
 }
 

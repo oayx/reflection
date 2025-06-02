@@ -12,6 +12,7 @@
 #include <type_traits>
 #include <tuple>
 #include <utility>
+#include <sstream>
 
 //---------- 元数据系统 ----------
 struct PropertyMeta {
@@ -37,13 +38,7 @@ struct TypeInfo {
 	virtual ~TypeInfo() = default;
 };
 
-template<typename T>
-struct TypeInfoImpl : TypeInfo {
-	TypeInfoImpl(const std::string& name)
-		: TypeInfo(name, sizeof(T)) {}
-};
-
-// 函数信息
+//---------- 函数信息 ----------
 struct FunctionInfo {
 	std::string name;
 	std::string returnType;
@@ -82,7 +77,7 @@ private:
 	}
 };
 
-// 属性信息
+//---------- 属性信息 ----------
 struct Property {
 	std::string name;
 	std::string type;
@@ -119,7 +114,7 @@ private:
 	}
 };
 
-// 类信息
+//---------- 类信息 ----------
 struct ClassInfo : TypeInfo {
 	ClassInfo* super;
 	std::vector<Property> properties;
@@ -172,37 +167,7 @@ public: \
     } \
     virtual ClassInfo* GetClass() const override { \
         return &StaticClass(); \
-    } \
-private: \
-    static int _registrationTrigger; 
-
-// 解析元数据参数
-std::vector<std::string> ParseMetaArgs(const char* metaStr) {
-	std::vector<std::string> metaArgs;
-	if (metaStr != nullptr && strlen(metaStr) > 0) {
-		std::string str = metaStr;
-		size_t start = 0;
-		size_t end = 0;
-
-		while (end != std::string::npos) {
-			end = str.find(',', start);
-			std::string token = str.substr(start, (end == std::string::npos) ? str.size() - start : end - start);
-
-			// 去除首尾空格
-			token.erase(0, token.find_first_not_of(" "));
-			token.erase(token.find_last_not_of(" ") + 1);
-
-			if (!token.empty()) {
-				metaArgs.push_back(token);
-			}
-
-			if (end != std::string::npos) {
-				start = end + 1;
-			}
-		}
-	}
-	return metaArgs;
-}
+    }
 
 // UPROPERTY 宏实现
 #define UPROPERTY(Type, Name, ...) \
@@ -218,6 +183,36 @@ std::vector<std::string> ParseMetaArgs(const char* metaStr) {
         } \
     }; \
     inline static _PropRegistrar_##Name _propReg_##Name;
+
+// 带参数列表的 UFUNCTION 宏
+#define UFUNCTION(ReturnType, Name, Params, ...) \
+    struct _FuncRegistrar_##Name { \
+        _FuncRegistrar_##Name() { \
+            using ClassType = CurrentClass; \
+            using FuncType = decltype(&ClassType::Name); \
+            \
+            /* 处理参数类型 */ \
+            std::vector<std::string> paramTypes = ParseFunctionParameters(#Params); \
+            /* 处理元数据 */ \
+            std::vector<std::string> metaArgs = ParseMetaArgs(#__VA_ARGS__); \
+            \
+            auto invoker = [](void* obj, void** params) { \
+                ClassType* instance = static_cast<ClassType*>(obj); \
+                static constexpr FuncType func = &ClassType::Name; \
+                FunctionInvoker<ClassType, FuncType>::Invoke( \
+                    instance, params, func); \
+            }; \
+            \
+            CurrentClass::StaticClass().AddFunction( \
+                #Name, \
+                #ReturnType, \
+                paramTypes, \
+                metaArgs, \
+                invoker \
+            ); \
+        } \
+    }; \
+    inline static _FuncRegistrar_##Name _funcReg_##Name;
 
 // 函数注册帮助类
 template<typename T, typename FuncPtr>
@@ -263,39 +258,66 @@ struct FunctionInvoker<T, Ret(T::*)(Args...)> {
 	}
 };
 
-// 带参数的 UFUNCTION 宏
-#define UFUNCTION(ReturnType, Name, ...) \
-    struct _FuncRegistrar_##Name { \
-        _FuncRegistrar_##Name() { \
-            using ClassType = CurrentClass; \
-            using FuncType = decltype(&ClassType::Name); \
-            std::vector<std::string> metaArgs; \
-            std::vector<std::string> paramTypes = {PP_EXPAND_TYPES(__VA_ARGS__)}; \
-            \
-            auto invoker = [](void* obj, void** params) { \
-                ClassType* instance = static_cast<ClassType*>(obj); \
-                static constexpr FuncType func = &ClassType::Name; \
-                FunctionInvoker<ClassType, FuncType>::Invoke( \
-                    instance, params, func); \
-            }; \
-            \
-            CurrentClass::StaticClass().AddFunction( \
-                #Name, \
-                #ReturnType, \
-                paramTypes, \
-                metaArgs, \
-                invoker \
-            ); \
-        } \
-    }; \
-    inline static _FuncRegistrar_##Name _funcReg_##Name;
+// 解析元数据参数
+std::vector<std::string> ParseMetaArgs(const char* metaStr) {
+	std::vector<std::string> metaArgs;
+	if (metaStr != nullptr && strlen(metaStr) > 0) {
+		std::string str = metaStr;
+		size_t start = 0;
+		size_t end = 0;
 
-// 参数处理辅助宏
-#define PP_EXPAND_TYPES(...) PP_EXPAND_TYPES_IMPL(__VA_ARGS__)
-#define PP_EXPAND_TYPES_IMPL(...) #__VA_ARGS__
+		while (end != std::string::npos) {
+			end = str.find(',', start);
+			std::string token = str.substr(start, (end == std::string::npos) ? str.size() - start : end - start);
 
-// 类实现宏
-#define IMPLEMENT_CLASS(ClassName) \
+			// 去除首尾空格
+			token.erase(0, token.find_first_not_of(" "));
+			token.erase(token.find_last_not_of(" ") + 1);
+
+			if (!token.empty()) {
+				metaArgs.push_back(token);
+			}
+
+			if (end != std::string::npos) {
+				start = end + 1;
+			}
+		}
+	}
+	return metaArgs;
+}
+
+// 解析参数列表
+std::vector<std::string> ParseFunctionParameters(const std::string& paramStr) {
+	std::vector<std::string> params;
+	std::istringstream iss(paramStr);
+	std::string token;
+
+	while (std::getline(iss, token, ',')) {
+		// 移除首尾空格
+		size_t start = token.find_first_not_of(" ");
+		size_t end = token.find_last_not_of(" ");
+		if (start != std::string::npos && end != std::string::npos) {
+			token = token.substr(start, end - start + 1);
+		}
+
+		// 移除参数名，只保留类型
+		size_t lastSpace = token.find_last_of(" ");
+		if (lastSpace != std::string::npos) {
+			token = token.substr(0, lastSpace);
+		}
+
+		// 再次移除首尾空格
+		start = token.find_first_not_of(" ");
+		end = token.find_last_not_of(" ");
+		if (start != std::string::npos && end != std::string::npos) {
+			token = token.substr(start, end - start + 1);
+		}
+
+		params.push_back(token);
+	}
+
+	return params;
+}
 
 //---------- 反射对象基类 ----------
 class UObject {
@@ -321,7 +343,8 @@ public:
 			funcInfo, paramPtrs, argTuple, const_cast<UObject*>(this));
 	}
 
-	// 辅助模板：用于在 C++17 中模拟 if constexpr
+private:
+	// 辅助模板
 	template <bool HasReturn, typename Ret, typename... Args>
 	struct InvokeHelper;
 
