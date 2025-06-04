@@ -259,7 +259,7 @@ struct FunctionInvoker<T, Ret(T::*)(Args...)> {
 };
 
 // 解析元数据参数
-std::vector<std::string> ParseMetaArgs(const char* metaStr) {
+std::vector<std::string> ParseMetaArgs(const char* metaStr = "") {
 	std::vector<std::string> metaArgs;
 	if (metaStr != nullptr && strlen(metaStr) > 0) {
 		std::string str = metaStr;
@@ -287,7 +287,7 @@ std::vector<std::string> ParseMetaArgs(const char* metaStr) {
 }
 
 // 解析参数列表
-std::vector<std::string> ParseFunctionParameters(const std::string& paramStr) {
+std::vector<std::string> ParseFunctionParameters(const std::string& paramStr = "") {
 	std::vector<std::string> params;
 	std::istringstream iss(paramStr);
 	std::string token;
